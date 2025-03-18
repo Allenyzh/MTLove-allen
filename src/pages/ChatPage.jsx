@@ -6,102 +6,56 @@ import GameOver from "../components/GameOver";
 import Win from "../components/Win";
 import Description from "../components/Description";
 import { fetchDb } from "../store/fetch";
+import { useQuery } from "@tanstack/react-query";
+import { sendMessageToAPI } from "../store/api";
 
 export default function ChatPage() {
-  // const {
-  //   userInput,
-  //   setUserInput,
-  //   sendMessage,
-  //   score,
-  //   fetchScenario,
-  //   scoreHistory,
-  //   resetGame,
-  // } = useStore();
-
   const [messages, setMessages] = useState([]);
   const [userInput, setUserInput] = useState("");
   const [score, setScore] = useState(0);
   const [scoreHistory, setScoreHistory] = useState([0]);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [challengeDescription, setChallengeDescription] = useState("");
+  const [isWin, setIsWin] = useState(null);
 
   const params = useParams();
   const currentId = parseInt(params.sid);
-  const [isWin, setIsWin] = useState(null);
+  const API_KEY = import.meta.env.VITE_API_KEY;
+
+  const { data, error, isLoading } = useQuery({
+    queryKey: [currentId],
+    queryFn: () => fetchDb(currentId),
+  });
 
   useEffect(() => {
-    const fetchScenarioData = async () => {
-      const scenarioData = await fetchDb(currentId);
-      setSystemPrompt(scenarioData.system);
+    if (!isLoading && !error && data) {
+      setSystemPrompt(data.system);
       setMessages([
         {
           role: "system",
           content: systemPrompt + " DO NOT INCLUDE THE SCORE IN THE TEXT",
         },
-        { role: "assistant", content: scenarioData.start },
+        { role: "assistant", content: data.start },
       ]);
-      setChallengeDescription(scenarioData.description);
-    };
-    fetchScenarioData();
-  }, [currentId, systemPrompt]);
+      setChallengeDescription(data.description);
+    }
+  }, [data, isLoading, error, systemPrompt]);
 
   const sendMessage = async () => {
-    const API_KEY = import.meta.env.VITE_API_KEY;
-    if (!userInput.trim()) return; // 如果输入为空则返回
-    const newMessage = { role: "user", content: userInput }; // 添加用户新消息
-    setUserInput(""); // 清空用户输入
-    setMessages([...messages, newMessage]); // 添加用户新消息到messages
-    console.log(messages);
-
-    const requestBody = {
-      model: "gemini-2.0-flash-exp",
-      messages: [...messages, newMessage],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "compliance_result",
-          schema: {
-            type: "object",
-            properties: {
-              text: {
-                type: "string",
-                description: "Response text.",
-              },
-              score: {
-                type: "number",
-                description: "Score of the response.",
-              },
-            },
-            required: ["text", "score"],
-            additionalProperties: false,
-          },
-          strict: true,
-        },
-      },
-    };
-
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify(requestBody),
-      }
+    const userInputMessage = userInput.trim();
+    setUserInput("");
+    setMessages([...messages, { role: "user", content: userInputMessage }]);
+    const response = await sendMessageToAPI(
+      messages,
+      API_KEY,
+      userInputMessage
     );
-    const data = await response.json();
-    const aiResponse = data.choices[0].message.content;
-    const jsonObj = JSON.parse(aiResponse);
-    const curScore = jsonObj.score;
-    setScore(score + curScore);
-    setScoreHistory([...scoreHistory, curScore]);
-    setMessages([
-      ...messages,
-      newMessage, // 添加用户新消息
-      { role: "assistant", content: jsonObj.text },
-    ]); // 添加助手新消息
+    if (!response) return;
+
+    setUserInput("");
+    setScore(score + response.score);
+    setScoreHistory([...scoreHistory, response.score]);
+    setMessages([...messages, response.newMessage, response.aiResponse]);
   };
 
   useEffect(() => {
@@ -123,6 +77,22 @@ export default function ChatPage() {
       handleClick();
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        Loading...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        Error: {error.message}
+      </div>
+    );
+  }
 
   // Game logic
   if (isWin === false) {
