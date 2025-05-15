@@ -6,7 +6,7 @@ import GameOver from "../components/GameOver";
 import Win from "../components/Win";
 import Description from "../components/Description";
 import { fetchDb } from "../store/fetch";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { sendMessageToAPI } from "../store/api";
 
 export default function ChatPage() {
@@ -24,22 +24,39 @@ export default function ChatPage() {
 
   const { data, error, isLoading } = useQuery({
     queryKey: [currentId],
-    queryFn: () => fetchDb(currentId),
-  });
-
-  useEffect(() => {
-    if (!isLoading && !error && data) {
+    queryFn: () => {
+      return fetchDb(currentId);
+    },
+    onSuccess: (data) => {
+      setChallengeDescription(data.description);
       setSystemPrompt(data.system);
       setMessages([
         {
           role: "system",
-          content: systemPrompt + " DO NOT INCLUDE THE SCORE IN THE TEXT",
+          content: data.system + " DO NOT INCLUDE THE SCORE IN THE TEXT",
         },
         { role: "assistant", content: data.start },
       ]);
-      setChallengeDescription(data.description);
-    }
-  }, [data, isLoading, error, systemPrompt]);
+    },
+  });
+
+
+  
+
+  console.log(messages);
+  // useEffect(() => {
+  //   if (!isLoading && !error && data) {
+  //     setSystemPrompt(data.system);
+  //     setMessages([
+  //       {
+  //         role: "system",
+  //         content: systemPrompt + " DO NOT INCLUDE THE SCORE IN THE TEXT",
+  //       },
+  //       { role: "assistant", content: data.start },
+  //     ]);
+  //     setChallengeDescription(data.description);
+  //   }
+  // }, [data, isLoading, error, systemPrompt]);
 
   const sendMessage = async () => {
     const userInputMessage = userInput.trim();
@@ -111,7 +128,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-dvh bg-gray-50">
-      <Description challengeDescription={challengeDescription} />
+      <Description challengeDescription={data.description} />
       <nav className="bg-white shadow-sm py-4 px-6 w-full z-50">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold text-gray-800">
